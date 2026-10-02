@@ -2,17 +2,60 @@
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#f3f4f6;color:#111827}.app{max-width:720px;margin:auto;min-height:100vh;background:white;padding-bottom:86px}header{padding:22px 18px;background:#111827;color:white;position:sticky;top:0;z-index:2}h1{font-size:21px;margin:0}.sub{font-size:12px;opacity:.75;margin-top:4px}.view{display:none;padding:18px}.view.active{display:block}.card{border:1px solid #e5e7eb;border-radius:18px;padding:16px;margin-bottom:14px;background:#fff;box-shadow:0 3px 12px #0000000b}button,.btn{border:0;border-radius:13px;padding:13px 15px;font-weight:700;background:#111827;color:#fff;cursor:pointer}.secondary{background:#e5e7eb;color:#111827}.danger{background:#991b1b}textarea,input{width:100%;border:1px solid #d1d5db;border-radius:12px;padding:12px;font:inherit;margin:8px 0;min-height:46px}textarea{min-height:150px;resize:vertical}.big{width:100%;padding:18px;margin:8px 0;font-size:16px}.muted{color:#6b7280;font-size:13px}.badge{font-size:11px;background:#eef2ff;padding:5px 8px;border-radius:20px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.item{border-bottom:1px solid #eee;padding:13px 0}.item:last-child{border:0}nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:min(720px,100%);display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:1px solid #ddd;padding:7px 3px calc(7px + env(safe-area-inset-bottom));z-index:3}nav button{background:transparent;color:#6b7280;padding:8px 2px;font-size:11px}nav button.active{color:#111827;background:#f3f4f6}.empty{text-align:center;padding:28px 10px;color:#6b7280}.count{font-size:28px;font-weight:800}.chapter{padding:12px;border:1px solid #e5e7eb;border-radius:12px;margin:8px 0}
 </style></head><body><main class="app"><header><h1>🎙️ Livro por Voz</h1><div class="sub">Fale primeiro. Escreva o livro depois.</div></header>
 <section id="audio" class="view active"><div class="card"><h2>Novo áudio</h2><p class="muted">Grave agora ou escolha uma gravação do celular. O áudio original permanece no seu aparelho.</p><button id="record" class="big">🎙️ Gravar áudio</button><input id="file" type="file" accept="audio/*" capture><div id="recStatus" class="muted"></div></div><div class="card"><b>Acervo</b><div class="count" id="audioCount">0</div><span class="muted">registros de áudio/transcrição</span></div><div id="audioList"></div></section>
-<section id="transcricoes" class="view"><div class="card"><h2>📝 Transcrições</h2><p class="muted">Ao gravar pelo app, a fala é transcrita gratuitamente pelo reconhecimento de voz disponível no navegador. O áudio original e o texto permanecem separados.</p></div><div id="transList"></div></section>
+<section id="transcricoes" class="view"><div class="card"><h2>📝 Transcrições</h2><p class="muted">Após gravar ou importar um áudio, o app tenta transcrevê-lo gratuitamente no próprio aparelho com Whisper. Na primeira utilização, o modelo precisa ser baixado. O áudio original e o texto permanecem separados.</p></div><div id="transList"></div></section>
 <section id="organizar" class="view"><div class="card"><h2>🧠 Oficina do texto</h2><p class="muted">Transforme a fala em prosa sem apagar a transcrição original. Edite pontuação, parágrafos, títulos e estilo.</p></div><div id="workList"></div></section>
 <section id="livro" class="view"><div class="card"><h2>📖 Meu livro</h2><input id="bookTitle" placeholder="Título provisório do livro"><textarea id="bookNotes" placeholder="Ideias gerais, estrutura, prefácio, observações..."></textarea><button onclick="saveBook()">Salvar dados do livro</button></div><div class="card"><div class="row"><b>Capítulos</b><button class="secondary" onclick="addChapter()">+ capítulo</button></div><div id="chapters"></div></div><button class="big" onclick="exportAll()">Exportar backup em texto</button></section>
 <nav><button data-v="audio" class="active">🎙️<br>Áudios</button><button data-v="transcricoes">📝<br>Texto</button><button data-v="organizar">🧠<br>Oficina</button><button data-v="livro">📖<br>Livro</button></nav></main>
-<script>
+<script type="module">
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
+env.allowLocalModels = false;
+let whisperPipe = null;
+async function getWhisper(){
+  if(!whisperPipe){
+    recStatus.textContent='Baixando o modelo gratuito de transcrição (somente na primeira vez)…';
+    whisperPipe = await pipeline('automatic-speech-recognition','onnx-community/whisper-tiny',{dtype:'q8'});
+  }
+  return whisperPipe;
+}
+async function audioTo16k(blob){
+  const buf=await blob.arrayBuffer();
+  const ctx=new (window.AudioContext||window.webkitAudioContext)();
+  const decoded=await ctx.decodeAudioData(buf.slice(0));
+  const offline=new OfflineAudioContext(1,Math.ceil(decoded.duration*16000),16000);
+  const src=offline.createBufferSource(); src.buffer=decoded; src.connect(offline.destination); src.start();
+  const rendered=await offline.startRendering(); await ctx.close();
+  return rendered.getChannelData(0);
+}
+async function transcribeLocal(blob){
+  const p=await getWhisper();
+  recStatus.textContent='Transcrevendo no próprio aparelho…';
+  const audio=await audioTo16k(blob);
+  const out=await p(audio,{language:'portuguese',task:'transcribe',chunk_length_s:30,stride_length_s:5});
+  return (out && out.text ? out.text : '').trim();
+}
 const KEY='livroPorVoz_v1';let db=JSON.parse(localStorage.getItem(KEY)||'{"items":[],"chapters":[],"book":{}}');let recorder,chunks=[],speechRec=null,liveText='';
 function save(){localStorage.setItem(KEY,JSON.stringify(db));render()}
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.view,nav button').forEach(x=>x.classList.remove('active'));document.getElementById(b.dataset.v).classList.add('active');b.classList.add('active')});
 async function startRecord(){if(!navigator.mediaDevices){alert('Gravação não suportada neste navegador.');return}if(recorder&&recorder.state==='recording'){recorder.stop();return}try{let s=await navigator.mediaDevices.getUserMedia({audio:true});chunks=[];liveText='';const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(SR){speechRec=new SR();speechRec.lang='pt-BR';speechRec.continuous=true;speechRec.interimResults=true;speechRec.onresult=e=>{let final='';for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal)final+=e.results[i][0].transcript+' ';liveText+=final;recStatus.textContent='Gravando e transcrevendo… '+liveText};speechRec.onerror=()=>{};try{speechRec.start()}catch(e){}}else recStatus.textContent='Gravando… Seu navegador não oferece transcrição ao vivo.';recorder=new MediaRecorder(s);recorder.ondataavailable=e=>chunks.push(e.data);recorder.onstop=async()=>{if(speechRec){try{speechRec.stop()}catch(e){}}await addAudio(new Blob(chunks,{type:recorder.mimeType||'audio/webm'}),'Gravação '+new Date().toLocaleString(),liveText.trim());s.getTracks().forEach(t=>t.stop());record.textContent='🎙️ Gravar áudio'};recorder.start();record.textContent='⏹️ Parar e salvar'}catch(e){alert('Não foi possível acessar o microfone.')}}
-document.getElementById('record').onclick=startRecord;document.getElementById('file').onchange=async e=>{let f=e.target.files[0];if(f)await addAudio(f,f.name);e.target.value=''};
-async function addAudio(blob,name,transcript=''){let id=Date.now();let data=await new Promise(ok=>{let r=new FileReader();r.onload=()=>ok(r.result);r.readAsDataURL(blob)});db.items.unshift({id,name,date:new Date().toISOString(),audio:data,raw:transcript,worked:transcript,title:'',status:transcript?'Transcrito':'Áudio salvo'});save();recStatus.textContent=transcript?'Áudio e transcrição salvos.':'Áudio salvo. Você pode preencher a transcrição na aba Texto.'}
+document.getElementById('record').onclick=startRecord;document.getElementById('file').onchange=async e=>{let f=e.target.files[0];if(f)await addAudio(f,f.name,'');e.target.value=''};
+async function addAudio(blob,name,transcript=''){
+  let id=Date.now();
+  let data=await new Promise(ok=>{let r=new FileReader();r.onload=()=>ok(r.result);r.readAsDataURL(blob)});
+  db.items.unshift({id,name,date:new Date().toISOString(),audio:data,raw:transcript,worked:transcript,title:'',status:transcript?'Transcrito':'Preparando transcrição…'});
+  save();
+  if(!transcript){
+    try{
+      transcript=await transcribeLocal(blob);
+      let x=db.items.find(x=>x.id===id);
+      if(x){x.raw=transcript;x.worked=transcript;x.status=transcript?'Transcrito no aparelho':'Sem fala reconhecida';save()}
+      recStatus.textContent=transcript?'Transcrição concluída gratuitamente.':'Áudio salvo, mas nenhuma fala foi reconhecida.';
+    }catch(e){
+      let x=db.items.find(x=>x.id===id);if(x){x.status='Áudio salvo — transcrição manual disponível';save()}
+      recStatus.textContent='Áudio salvo. A transcrição local não pôde ser executada neste aparelho.';
+      console.error(e);
+    }
+  }else recStatus.textContent='Áudio e transcrição salvos.';
+}
 function esc(s=''){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function render(){audioCount.textContent=db.items.length;audioList.innerHTML=db.items.length?db.items.map(x=>'<div class="card"><div class="row"><b>'+esc(x.name)+'</b><span class="badge">'+esc(x.status||'Original')+'</span></div><audio controls style="width:100%;margin-top:12px" src="'+x.audio+'"></audio><p class="muted">'+new Date(x.date).toLocaleString()+'</p><button class="danger" onclick="delItem('+x.id+')">Excluir</button></div>').join(''):'<div class="empty">Nenhum áudio ainda.</div>';
 transList.innerHTML=db.items.map(x=>'<div class="card"><b>'+esc(x.name)+'</b><textarea id="r'+x.id+'" placeholder="Transcrição literal...">'+esc(x.raw)+'</textarea><button onclick="setRaw('+x.id+')">Salvar transcrição</button></div>').join('')||'<div class="empty">Envie um áudio primeiro.</div>';
