@@ -1,4 +1,4 @@
-import { put, list } from '@vercel/blob';
+import { put, list, del } from '@vercel/blob';
 
 const ORIGIN = 'https://rickamorim02-arch.github.io';
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -7,7 +7,7 @@ function cors(req,res){
   const origin=String(req.headers.origin||'');
   if(origin===ORIGIN) res.setHeader('Access-Control-Allow-Origin',origin);
   res.setHeader('Vary','Origin');
-  res.setHeader('Access-Control-Allow-Methods','GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods','GET,POST,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers','Content-Type,X-SEFAZ-ID,X-SEFAZ-CREATED,X-SEFAZ-DURATION,X-SEFAZ-SUBJECT,X-SEFAZ-LESSON,X-SEFAZ-QUESTION,X-DEVICE-CODE');
   res.setHeader('Cache-Control','no-store');
   res.setHeader('X-Content-Type-Options','nosniff');
@@ -30,6 +30,17 @@ export default async function handler(req,res){
     await put('sefaz-inbox/'+device+'/'+id+'.json',JSON.stringify({...meta,audioUrl:audio.url}),{access:'private',addRandomSuffix:false,contentType:'application/json',allowOverwrite:true});
     return res.status(201).json({ok:true,id});
   }
+  if(req.method==='DELETE'){
+    const device=safe(req.query.device,80).toUpperCase().replace(/[^A-Z0-9-]/g,'');
+    const id=safe(req.query.id,100).replace(/[^a-zA-Z0-9._-]/g,'');
+    if(!device)return res.status(400).json({error:'Código do aparelho ausente'});
+    if(!id)return res.status(400).json({error:'ID ausente'});
+    const prefix='sefaz-inbox/'+device+'/'+id;
+    const out=await list({prefix,limit:10});
+    const targets=out.blobs.filter(b=>b.pathname===prefix+'.audio'||b.pathname===prefix+'.json').map(b=>b.url);
+    if(targets.length)await del(targets);
+    return res.status(200).json({ok:true,id,deleted:targets.length});
+  }
   if(req.method==='GET'){
     const device=safe(req.query.device,80).toUpperCase().replace(/[^A-Z0-9-]/g,'');
     if(!device)return res.status(400).json({error:'Código do aparelho ausente'});
@@ -45,5 +56,5 @@ export default async function handler(req,res){
     items.sort((a,b)=>String(a.created).localeCompare(String(b.created)));
     return res.status(200).json({items});
   }
-  res.setHeader('Allow','GET,POST,OPTIONS'); return res.status(405).json({error:'Método não permitido'});
+  res.setHeader('Allow','GET,POST,DELETE,OPTIONS'); return res.status(405).json({error:'Método não permitido'});
 }
