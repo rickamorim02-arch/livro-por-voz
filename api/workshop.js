@@ -22,7 +22,7 @@ export default async function handler(req, res) {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + process.env.GROQ_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'llama-3.1-8b-instant',
         temperature: 0.25,
         messages: [
           { role: 'system', content: 'Você é um editor literário em português brasileiro. Converta transcrição oral em prosa de livro clara e natural. Preserve rigorosamente fatos, ideias, sentido, voz autoral e ordem lógica. Corrija pontuação, concordância e repetições acidentais; remova vícios de fala apenas quando não acrescentarem significado. Não invente fatos, exemplos, argumentos ou conclusões. Não resuma conteúdo relevante. Separe em parágrafos. Responda SOMENTE JSON válido no formato {"title":"...","text":"..."}. O título deve ser curto e derivado do assunto; se não houver assunto claro, use "Sem título".' },
