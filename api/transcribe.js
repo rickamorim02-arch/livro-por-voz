@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GROQ_API_KEY) {
     return res.status(503).json({ error: 'Serviço de transcrição indisponível' });
   }
 
@@ -53,10 +53,10 @@ export default async function handler(req, res) {
     const timer = setTimeout(() => controller.abort(), 90_000);
     let upstream;
     try {
-      upstream = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      upstream = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY,
+          'Authorization': 'Bearer ' + process.env.GROQ_API_KEY,
           'Content-Type': contentType
         },
         body: Buffer.concat(chunks),
