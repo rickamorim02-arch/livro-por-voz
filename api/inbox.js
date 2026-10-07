@@ -18,7 +18,7 @@ export default async function handler(req,res){
   if(req.method==='OPTIONS') return res.status(204).end();
   if(req.method==='POST'){
     if(String(req.headers.origin||'')!==ORIGIN) return res.status(403).json({error:'Origem não permitida'});
-    const device=safe(req.headers['x-device-code'],40).toUpperCase().replace(/[^A-Z0-9-]/g,'');
+    const device=safe(req.headers['x-device-code'],80).toUpperCase().replace(/[^A-Z0-9-]/g,'');
     const id=safe(req.headers['x-sefaz-id'],100).replace(/[^a-zA-Z0-9._-]/g,'');
     if(!device)return res.status(400).json({error:'Código do aparelho ausente'});
     if(!id) return res.status(400).json({error:'ID ausente'});
@@ -31,7 +31,7 @@ export default async function handler(req,res){
     return res.status(201).json({ok:true,id});
   }
   if(req.method==='GET'){
-    const device=safe(req.query.device,40).toUpperCase().replace(/[^A-Z0-9-]/g,'');
+    const device=safe(req.query.device,80).toUpperCase().replace(/[^A-Z0-9-]/g,'');
     if(!device)return res.status(400).json({error:'Código do aparelho ausente'});
     const out=await list({prefix:'sefaz-inbox/'+device+'/',limit:100});
     const metas=out.blobs.filter(b=>b.pathname.endsWith('.json'));
