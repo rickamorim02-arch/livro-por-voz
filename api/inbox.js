@@ -16,6 +16,7 @@ function safe(v,n=160){return String(v||'').slice(0,n);}
 export default async function handler(req,res){
   cors(req,res);
   if(req.method==='OPTIONS') return res.status(204).end();
+  if(['GET','POST','DELETE'].includes(req.method))return res.status(403).json({error:'Sincronização bloqueada até autenticação individual por aparelho.'});
   if(req.method==='POST'){
     if(String(req.headers.origin||'')!==ORIGIN) return res.status(403).json({error:'Origem não permitida'});
     const device=safe(req.headers['x-device-code'],80).toUpperCase().replace(/[^A-Z0-9-]/g,'');
