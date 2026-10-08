@@ -2,6 +2,7 @@ import { list } from '@vercel/blob';
 export default async function handler(req,res){
   res.setHeader('Cache-Control','private, no-store');
   res.setHeader('X-Content-Type-Options','nosniff');
+  if(req.method==='GET')return res.status(403).json({error:'Reprodução remota bloqueada até autenticação individual.'});
   if(req.method!=='GET'){res.setHeader('Allow','GET');return res.status(405).end();}
   const device=String(req.query.device||'').toUpperCase().replace(/[^A-Z0-9-]/g,'');
   const id=String(req.query.id||'').replace(/[^a-zA-Z0-9._-]/g,'');
